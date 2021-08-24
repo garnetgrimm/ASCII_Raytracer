@@ -3,12 +3,20 @@
 #include <math.h>
 #include <windows.h>
 
-#define INIT_ROT 270
+#define FOV 90.0
+#define MAX_RENDER_DISTANCE 5
+#define MAX_RENDER_STEPS 500
+#define MAX_LENS_DISTORT 0.1
 
-#define RAMP_SIZE 10
-char* ramp = "@%#*+=-:. ";
-//#define RAMP_SIZE 70
-//char* ramp = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+#define INIT_ROT 270
+#define ROT_SPEED 1.8
+#define WALK_SPEED 0.2
+
+//#define RAMP_SIZE 10
+//char* ramp = " .:-=+*#%@"
+//char* ramp = "@%#*+=-:. ";
+#define RAMP_SIZE 70
+char* ramp = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
 
 char brightToAscii(float brightness) {
 	if(brightness >= 1) brightness = 1;
@@ -90,17 +98,15 @@ int initGameFromFile(Map* map, Player* p1, char* filename) {
 }
 
 void castRays(Map* map, Player* p1, Screen* screen) {
-	float FOV = 90;
 	int rotSteps = screen->cols;
 	int forSteps = 100;
 	float angle = p1->rot - (FOV/2);
-	int rendDist = map->rows;
-	float stepLength = (float)rendDist/(float)forSteps;
+	float stepLength = (float)MAX_RENDER_DISTANCE/(float)MAX_RENDER_STEPS;
 	for(int rotStep = 0; rotStep < rotSteps; rotStep++) {
 		float rayLen = 0;
 		float rayX = p1->x;
 		float rayY = p1->y;
-		for(int forStep = 0; forStep < forSteps; forStep++) {
+		for(int forStep = 0; forStep < MAX_RENDER_STEPS; forStep++) {
 			rayX += cos(angle*(M_PI/180.0))*stepLength;
 			rayY += sin(angle*(M_PI/180.0))*stepLength;
 			char c = getMatrixTile(map, (int)rayY, (int)rayX);
@@ -108,10 +114,9 @@ void castRays(Map* map, Player* p1, Screen* screen) {
 		}
 
 		for(int row = 0; row < screen->rows/2; row++) {
-			//TODO - row offset as well 3rd dim
-			rayLen = sqrt(pow(p1->x - rayX, 2) + pow(p1->y - rayY, 2) + pow((float)row*0.1, 2));
-			setMatrixTile(screen, (screen->rows/2) + row, rotStep, brightToAscii(rayLen/(float)rendDist));
-			setMatrixTile(screen, (screen->rows/2) - row, rotStep, brightToAscii(rayLen/(float)rendDist));
+			rayLen = sqrt(pow(p1->x - rayX, 2) + pow(p1->y - rayY, 2) + pow((float)row*MAX_LENS_DISTORT, 2));
+			setMatrixTile(screen, (screen->rows/2) + row, rotStep, brightToAscii(rayLen/(float)MAX_RENDER_DISTANCE));
+			setMatrixTile(screen, (screen->rows/2) - row, rotStep, brightToAscii(rayLen/(float)MAX_RENDER_DISTANCE));
 		}
 		angle += FOV / (rotSteps-1);
 	}
@@ -143,30 +148,38 @@ int main(int argc, char *argv[])
 		printf("FAILED TO LOAD LEVEL\n");
 		return EXIT_FAILURE;
 	}
-	float walkSpeed = 0.1;
 	
 	while(1) {
-		if (GetKeyState(VK_LEFT) & 0x8000) p1.rot-=1;
-		if (GetKeyState(VK_RIGHT) & 0x8000) p1.rot+=1;
+		if (GetKeyState(VK_LEFT) & 0x8000) p1.rot-=ROT_SPEED;
+		if (GetKeyState(VK_RIGHT) & 0x8000) p1.rot+=ROT_SPEED;
 		
 		//A and D
+		float newX = p1.x;
+		float newY = p1.y;
+		
 		if (GetKeyState(0x41) & 0x8000) {
-			p1.y+=cos(p1.rot*(M_PI/180.0))*walkSpeed;
-			p1.x+=sin(p1.rot*(M_PI/180.0))*walkSpeed;
+			newY+=cos(p1.rot*(M_PI/180.0))*WALK_SPEED;
+			newX+=sin(p1.rot*(M_PI/180.0))*WALK_SPEED;
 		}
 		if (GetKeyState(0x44) & 0x8000) {
-			p1.y-=cos(p1.rot*(M_PI/180.0))*walkSpeed;
-			p1.x-=sin(p1.rot*(M_PI/180.0))*walkSpeed;
+			newY-=cos(p1.rot*(M_PI/180.0))*WALK_SPEED;
+			newX-=sin(p1.rot*(M_PI/180.0))*WALK_SPEED;
 		}
 		
 		//W and S
 		if (GetKeyState(0x57) & 0x8000) {
-			p1.x+=cos(p1.rot*(M_PI/180.0))*walkSpeed;
-			p1.y+=sin(p1.rot*(M_PI/180.0))*walkSpeed;
+			newX+=cos(p1.rot*(M_PI/180.0))*WALK_SPEED;
+			newY+=sin(p1.rot*(M_PI/180.0))*WALK_SPEED;
 		}
 		if (GetKeyState(0x53) & 0x8000) {
-			p1.x-=cos(p1.rot*(M_PI/180.0))*walkSpeed;
-			p1.y-=sin(p1.rot*(M_PI/180.0))*walkSpeed;
+			newX-=cos(p1.rot*(M_PI/180.0))*WALK_SPEED;
+			newY-=sin(p1.rot*(M_PI/180.0))*WALK_SPEED;
+		}
+		
+		char c = getMatrixTile(&map, (int)newY, (int)newX);
+		if(c == ' ') {
+			p1.x = newX;
+			p1.y = newY;
 		}
 	
 		castRays(&map, &p1, &view);
